@@ -8,23 +8,23 @@ function IconSearch(props) {
     </svg>
   );
 }
-function IconWarn(props) {
+function IconInfo(props) {
   return (
-    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...props}>
-      <path d="M12.9 2.9a1 1 0 0 0-1.8 0L2.3 19.1A1 1 0 0 0 3.2 20.6h17.6a1 1 0 0 0 .9-1.5L12.9 2.9Z" fill="none" stroke="currentColor" strokeWidth="2"/>
-      <path d="M12 8v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-      <circle cx="12" cy="17.5" r="1.2" fill="currentColor"/>
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" {...props}>
+      <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" strokeWidth="2"/>
+      <path d="M12 10v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+      <circle cx="12" cy="7" r="1.2" fill="currentColor"/>
     </svg>
   );
 }
 
 export default function TopBar({
   logoSrc,
+  logoAlt = 'Logo',
   onLogoClick,
   onSearch,
-  onWarnClick,
-  unreadCount = 0,
-  placeholder = 'Buscar líneas o paradas…',
+  onInfoClick,       
+  placeholder = 'Buscar una parada específica',
 }) {
   const ref = React.useRef(null);
   const [q, setQ] = React.useState('');
@@ -103,21 +103,13 @@ export default function TopBar({
           )}
         </form>
 
-        {/* Avisos derecha */}
+        {/* Botón Info */}
         <button
-          onClick={onWarnClick}
-          aria-label="Abrir avisos"
+          onClick={onInfoClick}
+          aria-label="Información de la app"
           className="relative shrink-0 w-9 h-9 grid place-items-center rounded-md border border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
         >
-          <IconWarn />
-          {unreadCount > 0 && (
-            <span
-              aria-label={`${unreadCount} avisos sin leer`}
-              className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-[#FFA300] text-white text-[10px] leading-4 text-center"
-            >
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
+          <IconInfo />
         </button>
       </div>
     </header>

@@ -4,35 +4,31 @@ import BottomNav from './components/BottomNav.jsx';
 import HomeMap from './screens/HomeMap.jsx';
 import Lines from './screens/Lines.jsx';
 import Stops from './screens/Stops.jsx';
-import Settings from './screens/Settings.jsx';
+import Incidents from './screens/Incidents.jsx';
+import InfoModal from './components/InfoModal.jsx';
 
 export default function App() {
   const [tab, setTab] = React.useState('home');
-  const [unread, setUnread] = React.useState(2); // demo
+  const [infoOpen, setInfoOpen] = React.useState(false);
 
   const handleSearch = (q) => {
     console.log('Buscar:', q);
-    // TODO: navegar/filtrar
+    // TODO: navegar/filtrar si quieres
   };
-  const openWarnings = () => {
-    console.log('Abrir avisos');
-    // TODO: modal o pantalla de avisos
-  };
-
-  const topPad = tab === 'home' ? 'var(--topbar-h,56px)' : '0px';
 
   return (
     <div className="min-h-screen bg-white">
+      {/* TopBar SOLO en Inicio */}
       {tab === 'home' && (
         <TopBar
-          logoSrc="/logo.png"         // o import desde src/assets
+          logoSrc="/logo.png"      // o import desde src/assets
           onSearch={handleSearch}
-          onWarnClick={openWarnings}
-          unreadCount={unread}
+          onInfoClick={() => setInfoOpen(true)}  //  abre modal de información
         />
       )}
 
-      <main style={{ paddingTop: topPad }}>
+      {/* Contenido */}
+      <main style={{ paddingTop: tab === 'home' ? 'var(--topbar-h,56px)' : '0px' }}>
         {tab === 'home' && (
           <section id="panel-home" role="tabpanel" aria-labelledby="tab-home">
             <HomeMap />
@@ -48,14 +44,17 @@ export default function App() {
             <Stops />
           </section>
         )}
-        {tab === 'settings' && (
-          <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings">
-            <Settings />
+        {tab === 'incidents' && (
+          <section id="panel-incidents" role="tabpanel" aria-labelledby="tab-incidents">
+            <Incidents />
           </section>
         )}
       </main>
 
       <BottomNav value={tab} onChange={setTab} />
+
+      {/* Modal de información */}
+      <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />
     </div>
   );
 }

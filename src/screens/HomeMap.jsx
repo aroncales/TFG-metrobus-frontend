@@ -37,6 +37,15 @@ function stopDivIcon(color) {
   });
 }
 
+// arriba del archivo
+const tipoDiaAuto = () => {
+  const dow = new Date().getDay(); // 0=Dom, 6=Sáb
+  if (dow === 0) return 'D';
+  if (dow === 6) return 'S';
+  return 'LV';
+};
+
+
 // Hook interno para seguir el zoom del mapa
 function ZoomWatcher({ onChange }) {
   const map = useMapEvents({
@@ -47,6 +56,33 @@ function ZoomWatcher({ onChange }) {
   }, [map, onChange]);
   return null;
 }
+
+// Extrae "HH:mm" de "1970-01-01T19:43:00" (solo para mostrar)
+const toHHMM = (isoLike) => {
+  if (!isoLike || typeof isoLike !== 'string') return null;
+  const m = isoLike.match(/T(\d{2}):(\d{2})/);
+  return m ? `${m[1]}:${m[2]}` : null;
+};
+
+// Adapta el JSON de Mule a lo que espera el BottomSheet
+function normalizeTimesFromMule(items) {
+  const arr = Array.isArray(items) ? items : [];
+  const out = [];
+  for (const t of arr) {
+    const mins = Number(t.tiempo_restante);
+    if (!Number.isFinite(mins)) continue; // rigor: si no hay dato numérico, lo saltamos
+    out.push({
+      linea: t.linea ?? '',
+      destino: t.destino ?? '',
+      operador: t.operador ?? '',
+      minutos: Math.max(0, Math.round(mins)), // ← lo que ya usa tu UI
+      hora: toHHMM(t.hora),                    // ← opcional, por si quieres mostrar la hora
+    });
+  }
+  out.sort((a, b) => a.minutos - b.minutos);
+  return out;
+}
+
 
 export default function HomeMap() {
   const mapRef = React.useRef(null);
@@ -88,34 +124,38 @@ export default function HomeMap() {
   };
 
   async function handleStopClick(stop) {
-    setSelected(stop);
-    setSheetState('peek');
-    setCargando(true);
-    setError(null);
-    try {
-      // TODO: sustituir por tu endpoint real de tiempos
-      await new Promise((r) => setTimeout(r, 250));
-      const data = [
-        { linea: '164', destino: 'Valencia (Nou d’Octubre)', operador: 'MetroBus', minutos: 5 },
-        { linea: '164', destino: 'Torrent', operador: 'MetroBus', minutos: 17 },
-      ];
-      setTiempos(data);
+  setSelected(stop);
+  setSheetState('peek');
+  setCargando(true);
+  setError(null);
 
-      // Desplaza para que no lo tape el sheet
-      const map = mapRef.current;
-      if (map) {
-        const z = map.getZoom();
-        const target = L.latLng(stop.lat, stop.lng);
-        const off = map.project(target, z).subtract([0, 140]);
-        map.panTo(map.unproject(off, z), { animate: true });
-      }
-    } catch (e) {
-      setError(e?.message || 'Error al cargar tiempos.');
-      setTiempos([]);
-    } finally {
-      setCargando(false);
+  try {
+    const td = tipoDiaAuto(); // si ya lo tienes; si no, quita esta línea y el query param
+    const res = await fetch(`/api/paradas/${encodeURIComponent(stop.id)}/horarios?tipo_dia=${td}`);
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
     }
+    const raw = await res.json();
+    const data = normalizeTimesFromMule(raw);
+    setTiempos(data);
+
+    // Pan del mapa como ya tenías
+    const map = mapRef.current;
+    if (map) {
+      const z = map.getZoom();
+      const target = L.latLng(stop.lat, stop.lng);
+      const off = map.project(target, z).subtract([0, 140]);
+      map.panTo(map.unproject(off, z), { animate: true });
+    }
+  } catch (e) {
+    setError(e?.message || 'Error al cargar tiempos.');
+    setTiempos([]);
+  } finally {
+    setCargando(false);
   }
+}
+
 
   const selectedId = selected?.id ?? null;
   const showStops = mapZoom >= MIN_STOP_ZOOM;
