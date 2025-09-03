@@ -23,10 +23,11 @@ export default function TopBar({
   logoAlt = 'Logo',
   onLogoClick,
   onSearch,
-  onInfoClick,       
+  onInfoClick,
   placeholder = 'Buscar una parada específica',
 }) {
   const ref = React.useRef(null);
+  const inputRef = React.useRef(null);
   const [q, setQ] = React.useState('');
 
   // Medimos la altura real de la barra y la exponemos como --topbar-h
@@ -70,7 +71,7 @@ export default function TopBar({
           className="shrink-0 w-9 h-9 rounded-md overflow-hidden grid place-items-center border border-gray-200 bg-white"
         >
           {logoSrc ? (
-            <img src={logoSrc} alt="Logo" className="w-full h-full object-contain" />
+            <img src={logoSrc} alt={logoAlt} className="w-full h-full object-contain" />
           ) : (
             <div className="w-6 h-6 rounded bg-[#FFA300]" />
           )}
@@ -82,19 +83,23 @@ export default function TopBar({
             <IconSearch />
           </span>
           <input
+            ref={inputRef}
             type="search"
             inputMode="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={placeholder}
             aria-label="Buscar"
+            autoComplete="off"
+            spellCheck="false"
             className="w-full rounded-full border border-gray-300 bg-gray-100 pl-9 pr-9 py-2 text-sm
-                       placeholder-gray-500 focus:outline-none focus:border-[#FFA300] focus:ring-2 focus:ring-[#FFA300]/30"
+                       text-gray-900 caret-gray-900 placeholder-gray-500 focus:outline-none
+                       focus:border-[#FFA300] focus:ring-2 focus:ring-[#FFA300]/30"
           />
           {q && (
             <button
               type="button"
-              onClick={() => setQ('')}
+              onClick={() => { setQ(''); inputRef.current?.focus(); }}
               aria-label="Limpiar búsqueda"
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500"
             >

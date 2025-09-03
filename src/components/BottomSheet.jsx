@@ -25,7 +25,7 @@ export default function BottomSheet({
   cargando,
   error,
   tiempos,
-  peekHeight = 0.45,           // 45% de alto de pantalla
+  // peekHeight ya no se usa para tamaño fijo; ahora es auto-ajustado.
 }) {
   const sheetRef = React.useRef(null);
   const drag = React.useRef({ active:false, startY:0, lastY:0, lastT:0, dy:0, vy:0 });
@@ -56,15 +56,36 @@ export default function BottomSheet({
     };
   }, []);
 
-  const heights = React.useMemo(() => {
-    const peek = Math.round(viewportH * peekHeight);
-    const expanded = Math.round(viewportH * 0.92); // casi full
-    return { peek, expanded };
-  }, [viewportH, peekHeight]);
+  // --------- ALTURA AUTO para el peek (medida del contenido) ---------
+  const [peekAutoH, setPeekAutoH] = React.useState(() => Math.round(viewportH * 0.35));
+  const maxPeekH = Math.round(viewportH * 0.60); // límite superior del peek (60% pantalla)
+
+  // Mide la altura total del sheet cuando está en peek (handle + header + body con 2 items)
+  React.useEffect(() => {
+    if (state !== 'peek') return;
+    const el = sheetRef.current;
+    if (!el) return;
+
+    // Medimos con height:auto
+    const prev = el.style.height;
+    el.style.height = 'auto';
+    // rAF para asegurar layout actualizado
+    const id = requestAnimationFrame(() => {
+      const measured = el.scrollHeight || el.offsetHeight || 0;
+      const h = measured ? Math.min(measured, maxPeekH) : Math.round(viewportH * 0.35);
+      setPeekAutoH(h);
+      el.style.height = prev;
+    });
+    return () => cancelAnimationFrame(id);
+  // Re-medimos si cambian datos/viewport/parada
+  }, [state, tiempos, parada, viewportH, maxPeekH]);
+
+  // Altura del expandido (casi full)
+  const expandedH = Math.round(viewportH * 0.92);
 
   // Y (desde ARRIBA) para cada estado, dejando el sheet por encima de la barra inferior
-  const yPeek = React.useMemo(() => viewportH - heights.peek - navH, [viewportH, heights, navH]);
-  const yExpanded = React.useMemo(() => viewportH - heights.expanded - navH, [viewportH, heights, navH]);
+  const yPeek = React.useMemo(() => viewportH - peekAutoH - navH, [viewportH, peekAutoH, navH]);
+  const yExpanded = React.useMemo(() => viewportH - expandedH - navH, [viewportH, expandedH, navH]);
 
   const targetY = React.useMemo(() => {
     if (state === 'closed')   return viewportH;  // fuera por abajo
@@ -137,21 +158,27 @@ export default function BottomSheet({
   const handleMouseMove  = (e) => onMove(e.clientY);
   const handleMouseUp    = () => onEnd();
 
-  // —— FIX: z-index dinámico y safe-area-top cuando está expanded ——
+  // —— FIX: z-index dinámico y safe-area-top cuando está expanded —— 
   const isExpanded = state === 'expanded';
-  const containerZ = isExpanded ? 1300 : 1100;           // TopBar iba a ~1250
+  const isPeek = state === 'peek';
+  const containerZ = isExpanded ? 1300 : 1100; // TopBar ~1250
   const backdropZ  = isExpanded ? 1290 : 1050;
 
   const styleSheet = {
-    top: 0,                                    // anclado arriba
-    transform: `translateY(${targetY}px)`,     // posición por estado
+    top: 0,
+    transform: `translateY(${targetY}px)`,
     willChange: 'transform',
-    height: isExpanded ? `${heights.expanded}px` : `${heights.peek}px`,
-    paddingTop: isExpanded ? 'max(0px, env(safe-area-inset-top))' : 0, // respetar notch al tapar la topbar
+    height: isExpanded ? `${expandedH}px` : `${peekAutoH}px`, // 👈 peek auto
+    paddingTop: isExpanded ? 'max(0px, env(safe-area-inset-top))' : 0,
     zIndex: containerZ,
   };
 
   const miniCenter = parada ? [parada.lat, parada.lng] : null;
+
+  // Mostrar solo 2 items en peek
+  const visibleTiempos = Array.isArray(tiempos)
+    ? (isExpanded ? tiempos : tiempos.slice(0, 2))
+    : [];
 
   return (
     <>
@@ -199,6 +226,7 @@ export default function BottomSheet({
 
         {/* Body */}
         {isExpanded ? (
+          // -------- EXPANDIDO: todo igual que antes --------
           <div className="overflow-auto h-[calc(100%-56px-12px)] p-4 space-y-3">
             {/* Mapita real */}
             <div className="w-full h-40 rounded-lg border border-gray-200 overflow-hidden">
@@ -251,15 +279,16 @@ export default function BottomSheet({
             )}
           </div>
         ) : (
-          <div className="overflow-auto h-[calc(100%-56px-12px)] p-4">
+          // -------- PEEK: solo 2 próximos y altura auto --------
+          <div className="p-4">
             {cargando && <div className="text-gray-700">Cargando tiempos…</div>}
             {error && <div className="text-red-600 font-semibold">Error: {error}</div>}
-            {!cargando && !error && (!tiempos || tiempos.length === 0) && (
+            {!cargando && !error && (!visibleTiempos || visibleTiempos.length === 0) && (
               <div className="text-gray-700">No hay próximos servicios.</div>
             )}
-            {!cargando && !error && tiempos && tiempos.length > 0 && (
+            {!cargando && !error && visibleTiempos && visibleTiempos.length > 0 && (
               <ul className="space-y-2">
-                {tiempos.map((t, i) => (
+                {visibleTiempos.map((t, i) => (
                   <li key={i} className="border border-gray-200 rounded-lg p-3 text-gray-900">
                     <div><strong>Línea {t.linea}</strong> <span>→ {t.destino}</span></div>
                     <div className="flex justify-between items-center mt-1 text-sm">
@@ -269,6 +298,18 @@ export default function BottomSheet({
                   </li>
                 ))}
               </ul>
+            )}
+
+            {/* Botón para ver todos cuando hay más de 2 */}
+            {!isExpanded && Array.isArray(tiempos) && tiempos.length > 2 && (
+              <div className="mt-2">
+                <button
+                  className="text-xs text-[#FFA300] font-medium"
+                  onClick={() => onStateChange?.('expanded')}
+                >
+                  Ver todos ({tiempos.length})
+                </button>
+              </div>
             )}
           </div>
         )}

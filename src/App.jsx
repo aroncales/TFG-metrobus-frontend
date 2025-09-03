@@ -8,22 +8,33 @@ import Incidents from './screens/Incidents.jsx';
 import InfoModal from './components/InfoModal.jsx';
 
 export default function App() {
-  const [tab, setTab] = React.useState('home');
+  const [tab, setTabRaw] = React.useState('home');
+  const [nonce, setNonce] = React.useState(0);          // fuerza remount por pestaña
   const [infoOpen, setInfoOpen] = React.useState(false);
+  const [stopsQuery, setStopsQuery] = React.useState('');
 
-  const handleSearch = (q) => {
-    console.log('Buscar:', q);
-    // TODO: navegar/filtrar si quieres
-  };
+  function go(nextTab) {
+    // Limpiar estados al cambiar de pestaña
+    if (nextTab !== 'stops') setStopsQuery('');         // no conservar búsqueda de Paradas
+    setTabRaw(nextTab);
+    setNonce(n => n + 1);                               // remount de la vista
+  }
+
+  // Búsqueda desde la TopBar (Home) → ir a Paradas con query
+  function handleSearchStops(q) {
+    setStopsQuery(q || '');
+    go('stops');
+  }
 
   return (
     <div className="min-h-screen bg-white">
       {/* TopBar SOLO en Inicio */}
       {tab === 'home' && (
         <TopBar
-          logoSrc="/logo.png"      // o import desde src/assets
-          onSearch={handleSearch}
-          onInfoClick={() => setInfoOpen(true)}  //  abre modal de información
+          key={`top-${nonce}`}
+          logoSrc="/logo.png"
+          onSearch={handleSearchStops}
+          onInfoClick={() => setInfoOpen(true)}
         />
       )}
 
@@ -41,7 +52,7 @@ export default function App() {
         )}
         {tab === 'stops' && (
           <section id="panel-stops" role="tabpanel" aria-labelledby="tab-stops">
-            <Stops />
+            <Stops key={`stops-${nonce}`} initialQuery={stopsQuery} />
           </section>
         )}
         {tab === 'incidents' && (
@@ -51,7 +62,7 @@ export default function App() {
         )}
       </main>
 
-      <BottomNav value={tab} onChange={setTab} />
+      <BottomNav value={tab} onChange={go} />
 
       {/* Modal de información */}
       <InfoModal open={infoOpen} onClose={() => setInfoOpen(false)} />

@@ -1,12 +1,9 @@
+// src/screens/Lines.jsx
 import React from 'react';
-import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import { getRoutes, getRouteStops } from '../services/api.js';
+import { getRoutes, getRouteIncidencias, getIncidenciasAll } from '../services/api.js';
+import PdfViewer from '../components/PdfViewer.jsx';
 
-// import 'leaflet/dist/leaflet.css'; // ya lo tendrás en el entry global
-
-const BRAND = '#FFA300';
-
+// Iconos
 function IconSearch(props){return(
   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" {...props}>
     <path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14Z" fill="none" stroke="currentColor" strokeWidth="2"/>
@@ -18,11 +15,33 @@ function IconFilter(props){return(
     <path d="M3 5h18M6 12h12M10 19h4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );}
-function IconBack(props){return(
+function IconArrowLeft(props){return(
   <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" {...props}>
-    <path d="M15 18 9 12l6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <path d="M15 18 9 12l6-6" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );}
+function IconAlert(props){return(
+  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" {...props}>
+    <path d="M12 2 2 20h20L12 2z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
+    <path d="M12 8v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+    <circle cx="12" cy="17" r="1.2" fill="currentColor"/>
+  </svg>
+);}
+
+// Utilidades
+function buildLocalPdfUrl(route) {
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/,'');
+  const raw = (route?.linea ?? route?.id ?? '').toString();
+  const code = raw.toUpperCase().replace(/\s+/g,''); // "L 164" -> "L164"
+  return code ? `${base}/pdfs/${code}.pdf` : null;
+}
+function fmtDate(d) {
+  if (!d) return '—';
+  return d.toLocaleString('es-ES', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
 
 export default function Lines() {
   const [routes, setRoutes] = React.useState([]);
@@ -30,13 +49,17 @@ export default function Lines() {
   const [error, setError] = React.useState(null);
 
   const [q, setQ] = React.useState('');
-  const [sort, setSort] = React.useState('asc'); // 'asc' | 'desc'
-  const [opFilter, setOpFilter] = React.useState(''); // operador
+  const [sort, setSort] = React.useState('asc');
+  const [opFilter, setOpFilter] = React.useState('');
   const [filterOpen, setFilterOpen] = React.useState(false);
 
-  const [detail, setDetail] = React.useState(null); // { route, coords: [ [lat,lng], ... ] }
-  const [detailLoading, setDetailLoading] = React.useState(false);
-  const [detailError, setDetailError] = React.useState(null);
+  const [detail, setDetail] = React.useState(null); // { route, pdfUrl }
+
+  // Incidencias cargadas bajo demanda (panel desplegable)
+  const [incByRoute, setIncByRoute] = React.useState({});
+
+  // Mapa de "esta ruta tiene incidencias?" -> para decidir si mostramos el icono
+  const [hasIncSet, setHasIncSet] = React.useState(() => new Set());
 
   React.useEffect(() => {
     const ctrl = new AbortController();
@@ -52,6 +75,25 @@ export default function Lines() {
       }
     })();
     return () => ctrl.abort();
+  }, []);
+
+  // Cargar incidencias globales (si existe el endpoint) para saber qué rutas tienen incidencias
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const all = await getIncidenciasAll().catch(() => []);
+        if (!alive) return;
+        const s = new Set();
+        for (const it of Array.isArray(all) ? all : []) {
+          if (it && (it.ruta_id != null)) s.add(it.ruta_id);
+        }
+        setHasIncSet(s);
+      } catch {
+        setHasIncSet(new Set()); // si falla, no mostramos iconos
+      }
+    })();
+    return () => { alive = false; };
   }, []);
 
   const operadores = React.useMemo(() => {
@@ -82,36 +124,33 @@ export default function Lines() {
 
   function rLabel(r){ return r.linea || String(r.id); }
 
-  async function openDetail(route) {
-    setDetail({ route, coords: [] });
-    setDetailLoading(true); setDetailError(null);
+  function openDetail(route) {
+    const pdfUrl = buildLocalPdfUrl(route);
+    setDetail({ route, pdfUrl });
+  }
+  function closeDetail(){ setDetail(null); }
+
+  // Toggle incidencias de una ruta; carga bajo demanda
+  async function toggleIncidencias(route, e) {
+    e?.stopPropagation(); // no abrir el PDF
+    const id = route.id;
+    setIncByRoute(prev => {
+      const cur = prev[id];
+      if (cur && (cur.items || cur.loading || cur.error)) {
+        return { ...prev, [id]: { ...cur, open: !cur.open } };
+      }
+      return { ...prev, [id]: { open: true, loading: true, error: null, items: [] } };
+    });
+
+    if (incByRoute[id]?.items?.length) return;
+
     try {
-      const stops = await getRouteStops(route.id);
-      const coords = stops.map(s => [s.lat, s.lng]);
-      setDetail({ route, coords });
-    } catch (e) {
-      setDetailError(e.message || 'No se pudieron cargar las paradas');
-    } finally {
-      setDetailLoading(false);
+      const items = await getRouteIncidencias(id);
+      setIncByRoute(prev => ({ ...prev, [id]: { ...(prev[id]||{}), loading: false, items } }));
+    } catch (err) {
+      setIncByRoute(prev => ({ ...prev, [id]: { ...(prev[id]||{}), loading: false, error: err.message || 'Error' } }));
     }
   }
-
-  function FitToLine({ coords }) {
-  const map = useMap();
-  React.useEffect(() => {
-    if (coords && coords.length > 1) {
-      const bounds = L.latLngBounds(coords);
-      map.fitBounds(bounds, { padding: [24, 24] });
-    } else if (coords && coords.length === 1) {
-      map.setView(coords[0], 15);
-    }
-  }, [map, coords]);
-  return null;
-}
-
-
-
-  function closeDetail(){ setDetail(null); setDetailError(null); setDetailLoading(false); }
 
   return (
     <div id="panel-lines" className="p-4" style={{ paddingBottom: 'var(--nav-h,56px)' }}>
@@ -145,7 +184,7 @@ export default function Lines() {
               <div
                 role="dialog"
                 aria-label="Filtros de líneas"
-                className="absolute right-0 mt-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg p-3 z-20"
+                className="absolute right-0 mt-2 w-64 rounded-xl border border-gray-200 bg-white shadow-lg p-3 z-20 text-gray-900"
               >
                 <div className="mb-2">
                   <div className="text-xs font-semibold text-gray-600 mb-1">Ordenar</div>
@@ -174,7 +213,7 @@ export default function Lines() {
                   <select
                     value={opFilter}
                     onChange={e=>setOpFilter(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm"
+                    className="tw-select w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:border-[#FFA300] focus:ring-2 focus:ring-[#FFA300]/30"
                   >
                     <option value="">Todos</option>
                     {operadores.map(op => (
@@ -202,79 +241,103 @@ export default function Lines() {
       {loading && <div className="mt-3 text-sm text-gray-600">Cargando líneas…</div>}
 
       {/* Listado */}
-<ul className="mt-3 space-y-2">
-  {filteredSorted.map((r) => (
-    <li key={r.id}>
-      <button
-        onClick={() => openDetail(r)}
-        className="w-full text-left rounded-xl border border-gray-200 bg-white p-3 hover:bg-gray-50"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-base sm:text-lg font-semibold text-gray-900 leading-tight truncate">
-              {r.linea || r.id}
-            </div>
-            {(r.origen || r.destino) && (
-              <div className="mt-0.5 text-xs sm:text-sm text-gray-700 truncate">
-                {r.origen || '—'} <span className="mx-1">→</span> {r.destino || '—'}
+      <ul className="mt-3 space-y-2">
+        {filteredSorted.map((r) => {
+          const inc = incByRoute[r.id];
+          const showAlert = hasIncSet.has(r.id); // 👈 solo mostramos si sabemos que hay incidencias
+
+          return (
+            <li key={r.id} className="rounded-xl border border-gray-200 bg-white">
+              {/* Cabecera del item (abre PDF al tocar el bloque principal) */}
+              <div
+                className="w-full text-left p-3 hover:bg-gray-50 cursor-pointer"
+                onClick={() => openDetail(r)}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="text-base sm:text-lg font-semibold text-gray-900 leading-tight truncate">
+                      {r.linea || r.id}
+                    </div>
+                    {(r.origen || r.destino) && (
+                      <div className="mt-0.5 text-xs sm:text-sm text-gray-700 truncate">
+                        {r.origen || '—'} <span className="mx-1">→</span> {r.destino || '—'}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 self-center flex items-center gap-2">
+                    <div className="text-xs sm:text-sm text-gray-600">{r.operador || '—'}</div>
+
+                    {/* Botón incidencias: SOLO si hay */}
+                    {showAlert && (
+                      <button
+                        onClick={(e) => toggleIncidencias(r, e)}
+                        title="Ver incidencias de esta línea"
+                        aria-label="Ver incidencias de esta línea"
+                        className="w-9 h-9 grid place-items-center rounded-md border border-gray-200 bg-white hover:bg-gray-50 text-[#FFA300]"
+                      >
+                        <IconAlert />
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
-            )}
-          </div>
 
-          <div className="shrink-0 self-center text-xs sm:text-sm text-gray-600">
-            {r.operador || '—'}
-          </div>
-        </div>
-      </button>
-    </li>
-  ))}
-  {!loading && !error && filteredSorted.length === 0 && (
-    <li className="text-sm text-gray-600">No hay líneas que coincidan.</li>
-  )}
-</ul>
+              {/* Panel plegable de incidencias */}
+              {inc?.open && (
+                <div className="px-3 pb-3">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    {inc.loading && <div className="text-sm text-amber-800">Cargando incidencias…</div>}
+                    {inc.error && <div className="text-sm text-red-700">{inc.error}</div>}
+                    {!inc.loading && !inc.error && (inc.items?.length ?? 0) === 0 && (
+                      <div className="text-sm text-amber-800">No hay incidencias para esta línea.</div>
+                    )}
+                    {!inc.loading && !inc.error && (inc.items?.length ?? 0) > 0 && (
+                      <ul className="space-y-2">
+                        {inc.items.map(item => (
+                          <li key={item.id ?? item.fechaISO}>
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 text-sm text-gray-900">{item.descripcion}</div>
+                              <div className="shrink-0 text-xs text-gray-600">{fmtDate(item.fecha)}</div>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+              )}
+            </li>
+          );
+        })}
+        {!loading && !error && filteredSorted.length === 0 && (
+          <li className="text-sm text-gray-600">No hay líneas que coincidan.</li>
+        )}
+      </ul>
 
-
-      {/* Detalle con mapa (overlay) */}
+      {/* Overlay con PDF */}
       {detail && (
         <div className="fixed inset-0 z-[1300] bg-white">
           <div className="flex items-center gap-2 p-3 border-b border-gray-200">
-            <button onClick={closeDetail} aria-label="Volver" className="w-9 h-9 grid place-items-center rounded-md border border-gray-200 bg-white">
-              <IconBack/>
+            <button
+              onClick={closeDetail}
+              aria-label="Volver atrás"
+              title="Atrás"
+              className="w-10 h-10 grid place-items-center rounded-md border border-gray-200 bg-white hover:bg-gray-50 active:scale-[0.98] transition text-[#FFA300]"
+            >
+              <IconArrowLeft />
             </button>
-            <div>
-              <div className="font-semibold text-gray-900">{detail.route.linea || detail.route.id}</div>
-              <div className="text-xs text-gray-600">{detail.route.operador || '—'}</div>
+            <div className="min-w-0">
+              <div className="font-semibold text-gray-900 truncate">{detail.route.linea || detail.route.id}</div>
+              <div className="text-xs text-gray-600 truncate">{detail.route.operador || '—'}</div>
             </div>
-            <div className="ml-auto text-xs text-gray-600">
-              {detailLoading ? 'Cargando recorrido…' : (detailError ? <span className="text-red-600">{detailError}</span> : `${detail.coords.length} puntos`)}
+            <div className="ml-auto text-[11px] text-gray-500 truncate max-w-[50vw]">
+              {detail.pdfUrl ?? '—'}
             </div>
           </div>
 
           <div className="w-full h-[calc(100%-56px)]">
-            <MapContainer
-              center={[39.4699, -0.3763]}
-              zoom={12}
-              className="w-full h-full"
-              zoomControl={false}
-              attributionControl={true}
-            >
-              <TileLayer url="https://tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              {detail.coords.length > 0 && <FitToLine coords={detail.coords} />}
-
-              {detail.coords.length > 1 ? (
-                <>
-                  <Polyline positions={detail.coords} pathOptions={{ color: BRAND, weight: 5, opacity: 0.9 }} />
-                  <Marker position={detail.coords[0]} icon={L.divIcon({className:'', html:'<div style="width:10px;height:10px;background:#16a34a;border-radius:9999px;border:2px solid white"></div>'})}/>
-                  <Marker position={detail.coords[detail.coords.length-1]} icon={L.divIcon({className:'', html:'<div style="width:10px;height:10px;background:#ef4444;border-radius:9999px;border:2px solid white"></div>'})}/>
-                </>
-              ) : (
-                <div className="absolute inset-0 grid place-items-center">
-                  <div className="rounded bg-white/95 backdrop-blur border border-gray-200 px-3 py-1 text-sm text-gray-700">
-                    {detailLoading ? 'Cargando…' : 'Recorrido no disponible todavía'}
-                  </div>
-                </div>
-              )}
-            </MapContainer>
+            <PdfViewer url={detail.pdfUrl} />
           </div>
         </div>
       )}

@@ -4,17 +4,17 @@ import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
+  base: '/', // importante para que /pdfs/... resuelva siempre
   plugins: [react(), tailwindcss()],
   server: {
-    host: true,          // <- permite acceder por IP desde el iPhone
-    port: 5173,          // (opcional) fija puerto
+    host: true,
+    port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8081', // <- tu Mule local
+        target: 'http://localhost:8081', // tu Mule local
         changeOrigin: true,
         secure: false,
-        // /api/paradas  -> http://localhost:8081/paradas
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        rewrite: (p) => p.replace(/^\/api/, ''),
       },
     },
   },

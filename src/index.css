@@ -5,6 +5,8 @@ body { margin: 0; background: #fff; }
 :root { --nav-h: 56px; }
 
 
+
+
 /* Variables para reservar espacio de la barra inferior */
 :root { --nav-h: 56px; }          /* alto por defecto de tu tab bar */
 @supports (height: 100dvh) {

@@ -18,7 +18,7 @@ export default function InfoModal({ open, onClose }) {
               Los datos se utilizan exclusivamente con <em>fines académicos y de demostración</em>.
             </p>
             <p className="mt-2 text-sm text-gray-700">
-              Si observas algún error o incidencia, es probable que el sistema se encuentre en desarrollo activo.
+              Realizado por Adrián Roncales Guillén | Grado en Ingeniería Informática | ETSINF UPV.
             </p>
           </div>
         </div>

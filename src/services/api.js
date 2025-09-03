@@ -1,22 +1,22 @@
-
+// LISTAR TODAS LAS PARADAS
+// Backend: GET /paradas  -> [{ id, nombre, latitud, longitud }, ...]
 export async function getStops({ signal } = {}) {
   const res = await fetch('/api/paradas', { signal });
   if (!res.ok) {
     const txt = await res.text().catch(() => '');
     throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
   }
-  /** Esperamos un array con: { id, nombre, latitud, longitud } */
   const data = await res.json();
-  // Adaptamos a { id, nombre, lat, lng } para Leaflet
-  return (Array.isArray(data) ? data : []).map((s) => ({
-    id: s.id,
-    nombre: s.nombre,
-    lat: Number(s.latitud),
-    lng: Number(s.longitud),
-  })).filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+  return (Array.isArray(data) ? data : []).map(p => ({
+    id: p.id,
+    nombre: p.nombre ?? '',
+    lat: p.latitud ?? null,
+    lng: p.longitud ?? null,
+  }));
 }
 
 // --- RUTAS ---
+// src/services/api.js
 export async function getRoutes({ signal } = {}) {
   const res = await fetch('/api/rutas', { signal });
   if (!res.ok) {
@@ -24,15 +24,20 @@ export async function getRoutes({ signal } = {}) {
     throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
   }
   const data = await res.json();
-  // Formato real: [{ id, linea, origen, destino, operador }]
-  return (Array.isArray(data) ? data : []).map(r => ({
-    id: r.id,
-    linea: r.linea ?? '',        // ← usar este campo para mostrar/ordenar/buscar
-    operador: r.operador ?? '',
-    origen: r.origen ?? '',
-    destino: r.destino ?? '',
-  }));
+
+  // Soporta { id, linea, origen, destino, operador } o { id, nombre, ... }
+  return (Array.isArray(data) ? data : []).map(r => {
+    const linea = (r.linea ?? r.nombre ?? '').toString(); //  SIEMPRE poblado
+    return {
+      id: r.id,
+      linea,                             // ← usamos este en toda la app
+      origen: r.origen ?? '',
+      destino: r.destino ?? '',
+      operador: r.operador ?? '',
+    };
+  });
 }
+
 
 
 // Paradas ordenadas de una ruta (para dibujar el recorrido)
@@ -88,10 +93,16 @@ function _normalizeInc(i) {
  * Lista de incidencias (globales). Si tu backend acepta filtros por querystring,
  * puedes pasar { rutaId, paradaId } y lo añadimos a la URL; si no, filtramos en cliente.
  */
-export async function getIncidencias({ rutaId, paradaId, signal } = {}) {
+function _parseDate(s) {
+  if (!s) return null;
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function getIncidencias({ rutaId, linea, signal } = {}) {
   const params = new URLSearchParams();
   if (rutaId != null) params.set('rutaId', String(rutaId));
-  if (paradaId != null) params.set('paradaId', String(paradaId));
+  if (linea) params.set('linea', String(linea));
   const qs = params.toString();
   const url = `/api/incidencias${qs ? `?${qs}` : ''}`;
 
@@ -101,21 +112,26 @@ export async function getIncidencias({ rutaId, paradaId, signal } = {}) {
     throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
   }
   const data = await res.json();
-  let items = (Array.isArray(data) ? data : []).map(_normalizeInc);
 
-  // Si el backend no soporta filtros por query, aplica en cliente:
-  if (rutaId != null) items = items.filter(i => i.ruta_id === rutaId);
-  if (paradaId != null) items = items.filter(i => i.parada_id === paradaId);
+  let items = (Array.isArray(data) ? data : []).map(i => ({
+    id: i.id ?? null,
+    ruta_id: i.ruta_id ?? null,
+    linea: i.linea ?? '',
+    descripcion: i.descripcion ?? '',
+    fechaISO: i.fecha ?? null,
+    fecha: _parseDate(i.fecha),
+  }));
 
-  // Orden sugerido: severidad (desc) y luego fecha de fin más próxima
-  items.sort((a, b) => {
-    if (b._sev !== a._sev) return b._sev - a._sev;
-    const at = a._tsHasta ?? Infinity, bt = b._tsHasta ?? Infinity;
-    return at - bt;
-  });
+  // Si el backend ignora filtros, aplica en cliente:
+  if (rutaId != null) items = items.filter(x => x.ruta_id === rutaId);
+  if (linea) {
+    const L = String(linea).toUpperCase();
+    items = items.filter(x => String(x.linea).toUpperCase() === L);
+  }
 
-  // Limpia campos internos
-  return items.map(({ _sev, _tsHasta, ...rest }) => rest);
+  // Orden: más recientes primero
+  items.sort((a, b) => (b.fecha?.getTime?.() || 0) - (a.fecha?.getTime?.() || 0));
+  return items;
 }
 
 /** Incidencias de una ruta concreta: GET /rutas/{id}/incidencias */
@@ -126,13 +142,54 @@ export async function getRouteIncidencias(rutaId, { signal } = {}) {
     throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
   }
   const data = await res.json();
-  const items = (Array.isArray(data) ? data : []).map(_normalizeInc);
-  items.sort((a, b) => {
-    if (b._sev !== a._sev) return b._sev - a._sev;
-    const at = a._tsHasta ?? Infinity, bt = b._tsHasta ?? Infinity;
-    return at - bt;
-  });
-  return items.map(({ _sev, _tsHasta, ...rest }) => rest);
+  const items = (Array.isArray(data) ? data : []).map(i => ({
+    id: i.id ?? null,
+    ruta_id: i.ruta_id ?? rutaId,
+    linea: i.linea ?? '',
+    descripcion: i.descripcion ?? '',
+    fechaISO: i.fecha ?? null,
+    fecha: _parseDate(i.fecha),
+  }));
+  // más recientes primero
+  items.sort((a, b) => (b.fecha?.getTime?.() || 0) - (a.fecha?.getTime?.() || 0));
+  return items;
 }
 
+// Devuelve TODAS las incidencias (si tu backend expone GET /incidencias)
+// Formato esperado: [{ id, ruta_id, linea, descripcion, fecha }, ...]
+export async function getIncidenciasAll({ signal } = {}) {
+  const res = await fetch('/api/incidencias', { signal });
+  if (!res.ok) {
+    // si tu backend no tiene este endpoint, devolvemos lista vacía
+    return [];
+  }
+  const data = await res.json();
+  return Array.isArray(data) ? data : [];
+}
+
+
+// HORARIOS/PRÓXIMOS PASOS DE UNA PARADA
+// Backend: GET /paradas/{id}/horarios[?tipo_dia=] -> lista de próximos
+// Ejemplo item:
+// { hora:"1970-01-01T19:43:00", linea:"L164", destino:"Xirivella", operador:"FERNANBUS", tiempo_restante:12 }
+// HORARIOS/PRÓXIMOS PASOS DE UNA PARADA
+// src/services/api.js
+export async function getStopTimes(stopId, { tipoDia, signal } = {}) {
+  const qs = tipoDia ? `?tipo_dia=${encodeURIComponent(tipoDia)}` : '';
+  const res = await fetch(`/api/paradas/${encodeURIComponent(stopId)}/horarios${qs}`, { signal });
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    throw new Error(`Error ${res.status}: ${txt || res.statusText}`);
+  }
+  const data = await res.json();
+
+  return (Array.isArray(data) ? data : []).map(x => ({
+    horaISO: x.hora ?? null,
+    hora: x.hora ? new Date(x.hora) : null,
+    linea: String(x.linea ?? '').trim(),     
+    destino: String(x.destino ?? '').trim(),   
+    operador: String(x.operador ?? '').trim(), 
+    minutos: typeof x.tiempo_restante === 'number' ? x.tiempo_restante : null, // 
+  }));
+}
 

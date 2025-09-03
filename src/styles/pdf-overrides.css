@@ -1,0 +1,21 @@
+/* Fondo general gris al contenedor del visor (opcional si ya lo pones vía Tailwind) */
+.pdf-wrap {
+  background: #f3f4f6; /* tailwind bg-gray-100 */
+}
+
+/* Quita márgenes y paddings que pone react-pdf por defecto */
+.react-pdf__Page {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+/* Evita “espacios inline” del canvas */
+.react-pdf__Page__canvas {
+  display: block !important;
+}
+
+/* Asegura que NO haya separación entre páginas consecutivas */
+.react-pdf__Page + .react-pdf__Page {
+  margin-top: 0 !important;
+}
