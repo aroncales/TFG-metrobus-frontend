@@ -160,14 +160,16 @@ export default function Lines() {
           <div className="relative flex-1">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"><IconSearch/></span>
             <input
-              type="search"
-              value={q}
-              onChange={e=>setQ(e.target.value)}
-              placeholder="Buscar línea…"
-              className="w-full rounded-full border border-gray-300 bg-gray-100 pl-9 pr-4 py-2 text-sm
-                         placeholder-gray-500 focus:outline-none focus:border-[#FFA300] focus:ring-2 focus:ring-[#FFA300]/30"
-              aria-label="Buscar líneas"
-            />
+                  type="search"
+                  value={q}
+                  onChange={e=>setQ(e.target.value)}
+                  placeholder="Buscar línea…"
+                  className="w-full rounded-full border border-gray-300 bg-gray-100 pl-9 pr-4 py-2 text-sm
+                            text-gray-900 caret-gray-900 placeholder-gray-500 focus:outline-none
+                            focus:border-[#FFA300] focus:ring-2 focus:ring-[#FFA300]/30"
+                  aria-label="Buscar líneas"
+                />
+
           </div>
 
           <div className="relative">

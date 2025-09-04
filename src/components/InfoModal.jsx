@@ -24,9 +24,14 @@ export default function InfoModal({ open, onClose }) {
         </div>
 
         <div className="mt-4 flex justify-end gap-2">
-          <button onClick={onClose} className="px-3 py-1.5 text-sm rounded-md border border-gray-300 bg-white hover:bg-gray-50">
-            Cerrar
-          </button>
+          <button
+  onClick={onClose}
+  className="mt-4 inline-flex items-center justify-center rounded-md border border-gray-300
+             bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+>
+  Cerrar
+</button>
+
         </div>
       </div>
     </div>

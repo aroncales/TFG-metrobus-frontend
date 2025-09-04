@@ -4,17 +4,18 @@ import react from '@vitejs/plugin-react-swc'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  base: '/', // importante para que /pdfs/... resuelva siempre
   plugins: [react(), tailwindcss()],
   server: {
     host: true,
     port: 5173,
+    strictPort: true,
+    allowedHosts: ['.ngrok-free.app'], // para ngrok
+    hmr: { clientPort: 443 },          // HMR detrás de https
     proxy: {
       '/api': {
-        target: 'http://localhost:8081', // tu Mule local
+        target: 'http://localhost:8081', // Mule
         changeOrigin: true,
-        secure: false,
-        rewrite: (p) => p.replace(/^\/api/, ''),
+        rewrite: (path) => path.replace(/^\/api/, ''), // <-- CLAVE
       },
     },
   },
